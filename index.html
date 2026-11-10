@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Чат с админом</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#fff);--text:var(--tg-theme-text-color,#000);--hint:var(--tg-theme-hint-color,#8a96a3);
+  --accent:var(--tg-theme-button-color,#3390ec);--accentText:var(--tg-theme-button-text-color,#fff);
+  --header:var(--tg-theme-header-bg-color,var(--bg));--chat:#cfe3c4;--out:#eeffde;--in:#fff;--time:#6fa35a;--sep:rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:dark){:root{--bg:var(--tg-theme-bg-color,#212121);--text:var(--tg-theme-text-color,#fff);--header:var(--tg-theme-header-bg-color,#212121);--chat:#0f1a22;--out:#2b5278;--in:#182533;--time:#7da8d3;--sep:rgba(255,255,255,.4)}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--bg);color:var(--text);font:16px/1.35 -apple-system,"Segoe UI",Roboto,sans-serif}
+.app{height:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column;background:var(--chat)}
+header{display:flex;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--header);box-shadow:0 1px 0 rgba(0,0,0,.08);z-index:2}
+.ava{width:40px;height:40px;border-radius:50%;background:linear-gradient(#ff885e,#ff516a);color:#fff;font-weight:600;display:grid;place-items:center;font-size:18px}
+header b{display:block;font-size:16px}
+header small{color:var(--hint);font-size:13px}
+#log{flex:1;overflow-y:auto;padding:10px 10px 6px;display:flex;flex-direction:column;gap:3px}
+.sep{align-self:center;margin:8px 0;padding:3px 10px;border-radius:12px;background:var(--sep);color:#fff;font-size:13px}
+.m{position:relative;max-width:82%;padding:6px 9px 4px;border-radius:12px;white-space:pre-wrap;word-wrap:break-word;box-shadow:0 1px 1px rgba(0,0,0,.12)}
+.m.me{align-self:flex-end;background:var(--out);border-bottom-right-radius:4px;color:var(--text)}
+.m.admin{align-self:flex-start;background:var(--in);border-bottom-left-radius:4px;color:var(--text)}
+.m i{float:right;margin:6px 0 0 10px;font-size:11px;font-style:normal;color:var(--hint)}
+.m.me i{color:var(--time)}
+.m .who{display:block;font-weight:600;font-size:14px;color:#e17076;margin-bottom:1px}
+.empty{margin:auto;padding:10px 16px;border-radius:14px;background:var(--sep);color:#fff;text-align:center;max-width:260px;font-size:14px}
+#err{padding:6px 14px;font-size:14px;color:#fff;background:#d9534f;display:none}
+form{display:flex;align-items:flex-end;gap:8px;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:var(--header)}
+textarea{flex:1;font:inherit;color:var(--text);background:var(--bg);border:1px solid rgba(128,128,128,.3);border-radius:20px;padding:9px 14px;resize:none;max-height:120px;outline:none}
+textarea:focus-visible{border-color:var(--accent)}
+button{width:42px;height:42px;border:0;border-radius:50%;background:var(--accent);color:var(--accentText);display:grid;place-items:center;cursor:pointer;flex:none}
+button:disabled{opacity:.5}
+button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="ava">А</div>
+    <div><b>Админ</b><small>личные сообщения</small></div>
+  </header>
+  <div id="log"><div class="empty">Напишите сообщение — ответ придёт сюда.</div></div>
+  <div id="err" role="alert"></div>
+  <form id="f">
+    <textarea id="text" rows="1" maxlength="2000" placeholder="Сообщение" aria-label="Сообщение"></textarea>
+    <button id="btn" aria-label="Отправить"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z"/></svg></button>
+  </form>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const wa=window.Telegram&&Telegram.WebApp;
+if(wa){wa.ready();wa.expand();}
+const initData=wa&&wa.initData||"";
+let guest=null;
+if(!initData){
+  try{guest=localStorage.getItem("g")}catch(e){}
+  if(!guest){guest=[...crypto.getRandomValues(new Uint8Array(12))].map(b=>b.toString(16).padStart(2,"0")).join("");try{localStorage.setItem("g",guest)}catch(e){}}
+}
+const hdr=()=>({"Content-Type":"application/json",...(initData?{"x-init-data":initData}:{"x-guest-sid":guest})});
+
+let last=0,lastDay="";
+const fmt=t=>new Date(t).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"});
+function add(m){
+  const log=$("log"),e=log.querySelector(".empty");if(e)e.remove();
+  const day=new Date(m.t).toLocaleDateString("ru",{day:"numeric",month:"long"});
+  if(day!==lastDay){lastDay=day;const s=document.createElement("div");s.className="sep";s.textContent=day;log.appendChild(s);}
+  const d=document.createElement("div");d.className="m "+m.from;
+  if(m.from==="admin"){const w=document.createElement("span");w.className="who";w.textContent="Админ";d.appendChild(w);}
+  d.appendChild(document.createTextNode(m.text));
+  const i=document.createElement("i");i.textContent=fmt(m.t)+(m.from==="me"?" ✓":"");d.appendChild(i);
+  log.appendChild(d);log.scrollTop=log.scrollHeight;
+}
+function err(t){const e=$("err");e.textContent=t;e.style.display=t?"block":"none";}
+
+async function poll(){
+  try{
+    const r=await fetch("/api/messages?after="+last,{headers:hdr()});
+    if(!r.ok)return;
+    const j=await r.json();
+    for(const m of j.msgs){last=Math.max(last,m.id);if(m.from==="admin"){add(m);if(wa&&wa.HapticFeedback)wa.HapticFeedback.notificationOccurred("success");}}
+  }catch(e){}
+}
+setInterval(poll,3000);
+
+async function send(){
+  const text=$("text").value.trim();if(!text)return;
+  $("btn").disabled=true;err("");
+  try{
+    const r=await fetch("/api/send",{method:"POST",headers:hdr(),body:JSON.stringify({text})});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||"Ошибка отправки");
+    last=Math.max(last,j.id);add({from:"me",text,t:j.t});
+    $("text").value="";$("text").style.height="auto";
+  }catch(e){err(e.message)}
+  $("btn").disabled=false;$("text").focus();
+}
+$("f").addEventListener("submit",e=>{e.preventDefault();send()});
+$("text").addEventListener("input",e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"});
+$("text").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&matchMedia("(hover:hover)").matches){e.preventDefault();send()}});
+</script>
+</body>
+</html>
