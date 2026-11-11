@@ -61,6 +61,13 @@ function limited(key) {
 const app = express();
 app.use(express.json({ limit: "20kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+// Главная страница: public/index.html, а если папку public не загрузили — index.html рядом с server.js
+app.get("/", (req, res) => {
+  const f = [path.join(__dirname, "public", "index.html"), path.join(__dirname, "index.html")]
+    .find(p => require("fs").existsSync(p));
+  if (!f) return res.status(500).send("Файл index.html не найден: загрузите его в папку public (или рядом с server.js).");
+  res.sendFile(f);
+});
 
 app.post("/api/send", async (req, res) => {
   const who = identify(req);
